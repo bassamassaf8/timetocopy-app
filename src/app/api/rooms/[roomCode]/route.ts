@@ -8,7 +8,7 @@ import {
   setRoomTheme,
   exportRoomData,
   createFolder,
-  getFolders,
+
 } from "@/lib/storage";
 
 export async function GET(
