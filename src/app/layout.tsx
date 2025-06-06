@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TimeToCopy - Collaborative Clipboard Sharing",
   description:
-    "Share your clipboard across devices in real time. Create a room, share the code, and collaborate instantly with text, links, images, and videos.",
+    "Share your clipboard across devices in real time. Create a room, share the code, and collaborate instantly.",
   keywords: [
     "clipboard",
     "sharing",
