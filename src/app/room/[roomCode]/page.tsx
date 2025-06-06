@@ -57,6 +57,7 @@ interface RoomData {
   expiresAt: string;
   items: RoomItem[];
   participantCount: number;
+  participants: { userId: string; userName: string; lastActivity: string }[];
   chatMessages: ChatMessage[];
   folders: Folder[];
   theme: "light" | "dark";
@@ -84,7 +85,19 @@ export default function RoomPage() {
   const [userId] = useState(
     () => `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
   );
-  const [userName] = useState(() => `User ${Math.floor(Math.random() * 1000)}`);
+  const [userName, setUserName] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("timetocopy-username") || "";
+    }
+    return "";
+  });
+  const [showNamePrompt, setShowNamePrompt] = useState(() => {
+    if (typeof window !== "undefined") {
+      return !localStorage.getItem("timetocopy-username");
+    }
+    return true;
+  });
+  const [tempUserName, setTempUserName] = useState("");
   const [timeLeft, setTimeLeft] = useState<string>("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -96,6 +109,9 @@ export default function RoomPage() {
   const [newChatMessage, setNewChatMessage] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const pollInterval = useRef<NodeJS.Timeout | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -447,6 +463,89 @@ export default function RoomPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const copyRoomCode = async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (error) {
+      console.error("Failed to copy room code:", error);
+    }
+  };
+
+  const setUserNameAndStore = async (name: string) => {
+    const finalName = name.trim() || `User ${Math.floor(Math.random() * 1000)}`;
+    setUserName(finalName);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("timetocopy-username", finalName);
+    }
+
+    // Join the room by registering as a participant
+    try {
+      await fetch(`/api/rooms/${roomCode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "join_room",
+          userId,
+          userName: finalName,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to join room:", error);
+    }
+
+    setShowNamePrompt(false);
+  };
+
+  if (showNamePrompt) {
+    return (
+      <div className="min-h-screen bg-stone-50 dark:bg-stone-900 flex items-center justify-center transition-colors duration-300 px-4">
+        <div className="bg-white dark:bg-stone-800 rounded-3xl shadow-2xl p-8 max-w-md w-full border border-stone-200 dark:border-stone-700">
+          <div className="text-center mb-6">
+            <div className="bg-stone-700 dark:bg-stone-600 p-3 rounded-2xl w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <Copy className="h-8 w-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-stone-800 dark:text-stone-200 mb-2">
+              Welcome to Room {roomCode}
+            </h2>
+            <p className="text-stone-600 dark:text-stone-400">
+              Please enter your name to join the collaboration
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Your name"
+              value={tempUserName}
+              onChange={(e) => setTempUserName(e.target.value)}
+              onKeyPress={(e) =>
+                e.key === "Enter" && setUserNameAndStore(tempUserName)
+              }
+              className="w-full px-4 py-3 border-2 border-stone-300 dark:border-stone-600 rounded-xl focus:border-stone-500 dark:focus:border-stone-400 focus:outline-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200 placeholder-stone-500 dark:placeholder-stone-400"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setUserNameAndStore(tempUserName)}
+                className="flex-1 bg-stone-700 hover:bg-stone-800 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+              >
+                Join Room
+              </button>
+              <button
+                onClick={() => setUserNameAndStore("")}
+                className="px-6 py-3 border-2 border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 rounded-xl hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
+              >
+                Anonymous
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-stone-50 dark:bg-stone-900 flex items-center justify-center transition-colors duration-300">
@@ -510,43 +609,59 @@ export default function RoomPage() {
         </div>
       )}
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-7xl">
         {/* Header */}
-        <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 mb-8 border border-stone-200/50 dark:border-stone-700/50">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center space-x-4">
-              <div className="bg-stone-700 dark:bg-stone-600 p-3 rounded-2xl">
-                <Copy className="h-6 w-6 text-white" />
+        <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 mb-6 sm:mb-8 border border-stone-200/50 dark:border-stone-700/50">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="bg-stone-700 dark:bg-stone-600 p-2 sm:p-3 rounded-xl sm:rounded-2xl">
+                <Copy className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-stone-800 dark:text-stone-200">
-                  Room {roomCode}
-                </h1>
-                <p className="text-stone-600 dark:text-stone-400">
-                  Collaborative Clipboard
-                </p>
+                <button
+                  onClick={copyRoomCode}
+                  className="text-left hover:bg-stone-100 dark:hover:bg-stone-700 p-1 rounded-lg transition-colors group"
+                >
+                  <h1 className="text-xl sm:text-2xl font-bold text-stone-800 dark:text-stone-200 group-hover:text-stone-600 dark:group-hover:text-stone-400 transition-colors">
+                    Room {roomCode}
+                    {copySuccess && (
+                      <span className="text-green-600 dark:text-green-400 text-sm ml-2">
+                        ✓ Copied!
+                      </span>
+                    )}
+                  </h1>
+                  <p className="text-stone-600 dark:text-stone-400 text-sm group-hover:text-stone-500 dark:group-hover:text-stone-500">
+                    Click to copy room code
+                  </p>
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <button
                 onClick={() => setShowChat(!showChat)}
-                className="flex items-center space-x-2 text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 px-3 py-2 rounded-xl transition-colors"
+                className="flex items-center space-x-1 sm:space-x-2 text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-colors text-sm"
               >
-                <MessageCircle className="h-5 w-5" />
-                <span>{roomData?.chatMessages.length || 0}</span>
+                <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Chat</span>
+                <span className="bg-stone-300 dark:bg-stone-600 px-1.5 py-0.5 rounded-full text-xs">
+                  {roomData?.chatMessages.length || 0}
+                </span>
               </button>
 
               <button
                 onClick={() => setShowParticipants(!showParticipants)}
-                className="flex items-center space-x-2 text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 px-3 py-2 rounded-xl transition-colors"
+                className="flex items-center space-x-1 sm:space-x-2 text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-colors text-sm"
               >
-                <Users className="h-5 w-5" />
-                <span>{roomData?.participantCount || 0}</span>
+                <Users className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Users</span>
+                <span className="bg-stone-300 dark:bg-stone-600 px-1.5 py-0.5 rounded-full text-xs">
+                  {roomData?.participantCount || 0}
+                </span>
               </button>
 
-              <div className="flex items-center space-x-2 text-stone-700 dark:text-stone-300 bg-stone-200 dark:bg-stone-700 px-3 py-2 rounded-xl">
-                <Timer className="h-5 w-5" />
+              <div className="flex items-center space-x-1 sm:space-x-2 text-stone-700 dark:text-stone-300 bg-stone-200 dark:bg-stone-700 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-sm">
+                <Timer className="h-4 w-4 sm:h-5 sm:w-5" />
                 <span
                   className={
                     timeLeft === "Expired" ? "text-red-600 font-semibold" : ""
@@ -556,48 +671,54 @@ export default function RoomPage() {
                 </span>
               </div>
 
-              <button
-                onClick={() => exportRoom()}
-                className="bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2 shadow-lg"
-              >
-                <Download className="h-4 w-4" />
-                <span>Export</span>
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => exportRoom()}
+                  className="bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center space-x-1 sm:space-x-2 shadow-lg text-sm"
+                >
+                  <Download className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
 
-              <button
-                onClick={shareRoom}
-                className="bg-stone-600 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-800 text-white px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2 shadow-lg"
-              >
-                <Share2 className="h-4 w-4" />
-                <span>Share</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Participants Panel */}
-          {showParticipants && (
-            <div className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-700">
-              <h3 className="text-lg font-semibold text-stone-800 dark:text-stone-200 mb-3">
-                Active Participants ({roomData?.participantCount || 0})
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {Array.from({ length: roomData?.participantCount || 0 }).map(
-                  (_, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center space-x-2 bg-stone-200 dark:bg-stone-700 px-3 py-1 rounded-full"
-                    >
-                      <UserCircle className="h-4 w-4 text-stone-600 dark:text-stone-400" />
-                      <span className="text-sm text-stone-800 dark:text-stone-200">
-                        User {i + 1}
-                      </span>
-                    </div>
-                  )
-                )}
+                <button
+                  onClick={shareRoom}
+                  className="bg-stone-600 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-800 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center space-x-1 sm:space-x-2 shadow-lg text-sm"
+                >
+                  <Share2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
               </div>
             </div>
-          )}
+          </div>
         </div>
+
+        {/* Participants Panel */}
+        {showParticipants && (
+          <div className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-700">
+            <h3 className="text-lg font-semibold text-stone-800 dark:text-stone-200 mb-3">
+              Active Participants ({roomData?.participantCount || 0})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {roomData?.participants && roomData.participants.length > 0 ? (
+                roomData.participants.map((participant) => (
+                  <div
+                    key={participant.userId}
+                    className="flex items-center space-x-2 bg-stone-200 dark:bg-stone-700 px-3 py-1 rounded-full"
+                  >
+                    <UserCircle className="h-4 w-4 text-stone-600 dark:text-stone-400" />
+                    <span className="text-sm text-stone-800 dark:text-stone-200">
+                      {participant.userName}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-sm text-stone-600 dark:text-stone-400">
+                  No active participants
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Chat Panel */}
         {showChat && (
@@ -705,108 +826,143 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Folders */}
-        <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 mb-8 border border-stone-200/50 dark:border-stone-700/50">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-stone-800 dark:text-stone-200">
-              Folders
-            </h3>
+        {/* Folder Tabs */}
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-wrap gap-2 sm:gap-3 mb-3 sm:mb-4">
+            <button
+              onClick={() => setSelectedFolder(null)}
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium transition-colors ${
+                selectedFolder === null
+                  ? "bg-stone-700 text-white shadow-lg"
+                  : "bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-600"
+              }`}
+            >
+              All Items
+            </button>
+
+            {folders.map((folder) => (
+              <button
+                key={folder.id}
+                onClick={() => setSelectedFolder(folder.id)}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium transition-colors ${
+                  selectedFolder === folder.id
+                    ? "bg-stone-700 text-white shadow-lg"
+                    : "bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-600"
+                }`}
+              >
+                <Folder className="h-3 w-3 sm:h-4 sm:w-4 inline mr-1 sm:mr-2" />
+                {folder.name}
+              </button>
+            ))}
+
             <button
               onClick={() => setShowNewFolderForm(!showNewFolderForm)}
-              className="bg-stone-600 hover:bg-stone-700 text-white px-3 py-2 rounded-xl transition-colors flex items-center space-x-2"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-stone-600 hover:bg-stone-700 text-white font-medium transition-colors shadow-lg text-sm sm:text-base"
             >
-              <FolderPlus className="h-4 w-4" />
-              <span>New Folder</span>
+              <FolderPlus className="h-3 w-3 sm:h-4 sm:w-4 inline mr-1 sm:mr-2" />
+              New Folder
             </button>
           </div>
 
           {showNewFolderForm && (
-            <div className="mb-4 p-4 bg-stone-100 dark:bg-stone-700 rounded-2xl border border-stone-200 dark:border-stone-600">
-              <div className="flex space-x-3">
+            <div className="bg-white dark:bg-stone-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-stone-200 dark:border-stone-700 shadow-lg">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <input
                   type="text"
                   placeholder="Folder name"
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-xl focus:border-stone-500 dark:focus:border-stone-400 focus:outline-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200"
+                  className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-stone-300 dark:border-stone-600 rounded-lg sm:rounded-xl focus:border-stone-500 dark:focus:border-stone-400 focus:outline-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200 text-sm sm:text-base"
                 />
-                <button
-                  onClick={createFolder}
-                  disabled={!newFolderName.trim()}
-                  className="bg-stone-600 hover:bg-stone-700 text-white px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
-                >
-                  Create
-                </button>
+                <div className="flex gap-2 sm:gap-3">
+                  <button
+                    onClick={createFolder}
+                    disabled={!newFolderName.trim()}
+                    className="px-4 sm:px-6 py-2 sm:py-3 bg-stone-700 hover:bg-stone-800 text-white rounded-lg sm:rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base font-medium"
+                  >
+                    Create
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowNewFolderForm(false);
+                      setNewFolderName("");
+                    }}
+                    className="px-4 sm:px-6 py-2 sm:py-3 border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 rounded-lg sm:rounded-xl hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors text-sm sm:text-base"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setSelectedFolder(null)}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-xl transition-colors ${
-                selectedFolder === null
-                  ? "bg-stone-600 text-white"
-                  : "bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-600"
-              }`}
-            >
-              <FileText className="h-4 w-4" />
-              <span>All Items</span>
-            </button>
-            {folders.map((folder) => (
-              <button
-                key={folder.id}
-                onClick={() => setSelectedFolder(folder.id)}
-                className={`flex items-center space-x-2 px-3 py-2 rounded-xl transition-colors ${
-                  selectedFolder === folder.id
-                    ? "bg-stone-600 text-white"
-                    : "bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-600"
-                }`}
-              >
-                <Folder className="h-4 w-4" />
-                <span>{folder.name}</span>
-              </button>
-            ))}
-          </div>
         </div>
 
-        {/* Add Item Section */}
-        <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 mb-8 border border-stone-200/50 dark:border-stone-700/50">
-          {!showAddForm ? (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="w-full bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center space-x-2 shadow-lg"
-            >
-              <Plus className="h-5 w-5" />
-              <span>Add Content</span>
-            </button>
-          ) : (
-            <div className="space-y-4">
-              <textarea
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                placeholder="Paste text, links, or URLs here. Content type will be detected automatically..."
-                className="w-full px-4 py-3 border-2 border-stone-300 dark:border-stone-600 rounded-2xl focus:border-stone-500 dark:focus:border-stone-400 focus:outline-none resize-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200 placeholder-stone-500 dark:placeholder-stone-400"
-                rows={4}
-              />
+        {/* Add Item Form */}
+        <div className="mb-6 sm:mb-8">
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="w-full bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white font-semibold py-3 sm:py-4 px-4 sm:px-6 rounded-2xl sm:rounded-3xl transition-all duration-200 flex items-center justify-center space-x-2 sm:space-x-3 shadow-xl text-sm sm:text-base"
+          >
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+            <span>Add New Item</span>
+          </button>
 
-              <div className="flex space-x-3">
-                <button
-                  onClick={addItem}
-                  disabled={!newContent.trim() || isAdding}
-                  className="flex-1 bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-                >
-                  {isAdding ? "Adding..." : "Add Item"}
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setNewContent("");
-                  }}
-                  className="px-6 py-3 border-2 border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 rounded-2xl hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors"
-                >
-                  Cancel
-                </button>
+          {showAddForm && (
+            <div className="mt-4 sm:mt-6 bg-white/90 dark:bg-stone-800/90 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 border border-stone-200/50 dark:border-stone-700/50">
+              <div className="space-y-4 sm:space-y-6">
+                <div>
+                  <label className="block text-sm sm:text-base font-medium text-stone-800 dark:text-stone-200 mb-2 sm:mb-3">
+                    Content
+                  </label>
+                  <textarea
+                    placeholder="Paste text, links, or drag files here..."
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-stone-300 dark:border-stone-600 rounded-xl sm:rounded-2xl focus:border-stone-500 dark:focus:border-stone-500 focus:outline-none resize-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200 placeholder-stone-500 dark:placeholder-stone-400 text-sm sm:text-base"
+                    rows={4}
+                  />
+                </div>
+
+                {folders.length > 0 && (
+                  <div>
+                    <label className="block text-sm sm:text-base font-medium text-stone-800 dark:text-stone-200 mb-2 sm:mb-3">
+                      Folder
+                    </label>
+                    <select
+                      value={selectedFolder || ""}
+                      onChange={(e) =>
+                        setSelectedFolder(e.target.value || null)
+                      }
+                      className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-stone-300 dark:border-stone-600 rounded-xl sm:rounded-2xl focus:border-stone-500 dark:focus:border-stone-500 focus:outline-none bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-200 text-sm sm:text-base"
+                    >
+                      <option value="">Main folder</option>
+                      {folders.map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  <button
+                    onClick={addItem}
+                    disabled={!newContent.trim() || isAdding}
+                    className="flex-1 bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white font-semibold py-3 px-4 sm:px-6 rounded-xl sm:rounded-2xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg text-sm sm:text-base"
+                  >
+                    {isAdding ? "Adding..." : "Add Item"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setNewContent("");
+                    }}
+                    className="px-4 sm:px-6 py-3 border-2 border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-300 rounded-xl sm:rounded-2xl hover:bg-stone-100 dark:hover:bg-stone-700 transition-colors text-sm sm:text-base"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -902,48 +1058,37 @@ function ItemCard({
   formatFileSize: (bytes: number) => string;
 }) {
   return (
-    <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 border border-stone-200/50 dark:border-stone-700/50">
-      <div className="flex items-start justify-between">
-        <div className="flex items-start space-x-4 flex-1">
+    <div className="bg-white/80 dark:bg-stone-800/80 backdrop-blur-sm rounded-2xl sm:rounded-3xl shadow-xl p-4 sm:p-6 border border-stone-200/50 dark:border-stone-700/50">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+        <div className="flex items-start space-x-3 sm:space-x-4 flex-1">
           <div className="bg-stone-200 dark:bg-stone-700 p-2 rounded-xl flex-shrink-0">
             {getItemIcon(item.type)}
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center space-x-2 mb-2">
-              <span className="text-sm font-medium text-stone-700 dark:text-stone-300 capitalize">
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-2">
+              <span className="text-xs sm:text-sm font-medium text-stone-700 dark:text-stone-300 capitalize bg-stone-100 dark:bg-stone-700 px-2 py-1 rounded-md">
                 {item.type}
               </span>
               {item.fileName && (
                 <>
-                  <span className="text-sm text-stone-500 dark:text-stone-400">
-                    •
-                  </span>
-                  <span className="text-sm text-stone-600 dark:text-stone-400">
+                  <span className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 truncate max-w-32 sm:max-w-none">
                     {item.fileName}
                   </span>
                   {item.fileSize && (
-                    <>
-                      <span className="text-sm text-stone-500 dark:text-stone-400">
-                        •
-                      </span>
-                      <span className="text-sm text-stone-600 dark:text-stone-400">
-                        {formatFileSize(item.fileSize)}
-                      </span>
-                    </>
+                    <span className="text-xs text-stone-600 dark:text-stone-400">
+                      ({formatFileSize(item.fileSize)})
+                    </span>
                   )}
                 </>
               )}
-              <span className="text-sm text-stone-500 dark:text-stone-400">
-                •
-              </span>
-              <span className="text-sm text-stone-600 dark:text-stone-400">
+              <span className="text-xs text-stone-600 dark:text-stone-400">
                 {formatDistanceToNow(new Date(item.createdAt), {
                   addSuffix: true,
                 })}
               </span>
               {item.isPinned && (
-                <Pin className="h-4 w-4 text-stone-600 dark:text-stone-400" />
+                <Pin className="h-3 w-3 sm:h-4 sm:w-4 text-stone-600 dark:text-stone-400" />
               )}
             </div>
 
@@ -1066,7 +1211,7 @@ function ItemCard({
                     className="flex items-center space-x-1 bg-stone-100 dark:bg-stone-700 hover:bg-stone-200 dark:hover:bg-stone-600 px-2 py-1 rounded-full text-xs sm:text-sm transition-colors"
                   >
                     <span className="text-sm sm:text-base">{emoji}</span>
-                    <span className="text-stone-700 dark:text-stone-300 text-xs sm:text-sm">
+                    <span className="text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-medium">
                       {users.length}
                     </span>
                   </button>
@@ -1076,51 +1221,55 @@ function ItemCard({
           </div>
         </div>
 
-        <div className="flex items-start space-x-1 sm:space-x-2 ml-2 sm:ml-4 flex-shrink-0">
-          <button
-            onClick={() => onPin(item.id)}
-            className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-colors ${
-              item.isPinned
-                ? "bg-stone-600 text-white"
-                : "bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600"
-            }`}
-          >
-            <Pin className="h-3 w-3 sm:h-4 sm:w-4" />
-          </button>
-
-          <div className="relative">
+        <div className="flex items-center justify-between sm:justify-start sm:flex-col sm:items-end space-x-2 sm:space-x-0 sm:space-y-2 flex-shrink-0">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             <button
-              onClick={() =>
-                setShowEmojiPicker(showEmojiPicker === item.id ? null : item.id)
-              }
-              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
+              onClick={() => onPin(item.id)}
+              className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl transition-colors ${
+                item.isPinned
+                  ? "bg-stone-600 text-white"
+                  : "bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600"
+              }`}
             >
-              <Smile className="h-3 w-3 sm:h-4 sm:w-4" />
+              <Pin className="h-3 w-3 sm:h-4 sm:w-4" />
             </button>
 
-            {showEmojiPicker === item.id && (
-              <div className="absolute top-full mt-2 right-0 bg-white dark:bg-stone-800 rounded-xl shadow-lg border border-stone-200 dark:border-stone-600 p-2 sm:p-3 z-10 min-w-0">
-                <div className="grid grid-cols-4 gap-1 sm:gap-2">
-                  {EMOJI_LIST.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => onReaction(item.id, emoji)}
-                      className="p-1.5 sm:p-2 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-base sm:text-lg transition-colors"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+            <div className="relative">
+              <button
+                onClick={() =>
+                  setShowEmojiPicker(
+                    showEmojiPicker === item.id ? null : item.id
+                  )
+                }
+                className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-stone-200 dark:bg-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-300 dark:hover:bg-stone-600 transition-colors"
+              >
+                <Smile className="h-3 w-3 sm:h-4 sm:w-4" />
+              </button>
+
+              {showEmojiPicker === item.id && (
+                <div className="absolute top-full mt-2 right-0 sm:left-0 bg-white dark:bg-stone-800 rounded-xl shadow-lg border border-stone-200 dark:border-stone-600 p-3 sm:p-4 z-10 min-w-[200px] sm:min-w-[240px]">
+                  <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                    {EMOJI_LIST.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => onReaction(item.id, emoji)}
+                        className="p-2 sm:p-3 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-700 text-xl sm:text-2xl transition-colors flex items-center justify-center aspect-square"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <button
             onClick={(e) => onCopy(item.content, e)}
-            className="bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center space-x-1 sm:space-x-2 flex-shrink-0 shadow-lg"
+            className="bg-stone-700 hover:bg-stone-800 dark:bg-stone-600 dark:hover:bg-stone-700 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 flex items-center space-x-1 sm:space-x-2 flex-shrink-0 shadow-lg text-xs sm:text-sm"
           >
             <Copy className="h-3 w-3 sm:h-4 sm:w-4" />
-            <span className="text-xs sm:text-sm">Copy</span>
+            <span>Copy</span>
           </button>
         </div>
       </div>

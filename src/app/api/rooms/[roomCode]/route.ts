@@ -8,100 +8,19 @@ import {
   setRoomTheme,
   exportRoomData,
   createFolder,
-
+  addParticipant,
 } from "@/lib/storage";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ roomCode: string }> }
+  { params }: { params: { roomCode: string } }
 ) {
   try {
-    const { roomCode } = await params;
-    const { searchParams } = new URL(request.url);
-    const action = searchParams.get("action");
-
-    if (!roomCode) {
-      return NextResponse.json(
-        { error: "Room code is required" },
-        { status: 400 }
-      );
-    }
-
-    if (action === "export") {
-      const exportData = exportRoomData(roomCode);
-      if (!exportData) {
-        return NextResponse.json(
-          { error: "Room not found or expired" },
-          { status: 404 }
-        );
-      }
-
-      const format = searchParams.get("format") || "markdown";
-
-      if (format === "json") {
-        const room = getRoom(roomCode);
-        if (!room) {
-          return NextResponse.json(
-            { error: "Room not found or expired" },
-            { status: 404 }
-          );
-        }
-
-        const jsonData = {
-          roomCode: room.id,
-          created: room.createdAt.toISOString(),
-          expires: room.expiresAt.toISOString(),
-          participants: room.participants.size,
-          items: room.items.map((item) => ({
-            id: item.id,
-            type: item.type,
-            content: item.content,
-            created: item.createdAt.toISOString(),
-            userId: item.userId,
-            isPinned: item.isPinned,
-            reactions: item.reactions,
-            fileName: item.fileName,
-            fileSize: item.fileSize,
-            fileType: item.fileType,
-            folderId: item.folderId,
-          })),
-          chatMessages: room.chatMessages.map((msg) => ({
-            id: msg.id,
-            userId: msg.userId,
-            userName: msg.userName,
-            message: msg.message,
-            created: msg.createdAt.toISOString(),
-          })),
-          exportedAt: new Date().toISOString(),
-        };
-
-        return new NextResponse(JSON.stringify(jsonData, null, 2), {
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Disposition": `attachment; filename="room-${roomCode}-${
-              new Date().toISOString().split("T")[0]
-            }.json"`,
-          },
-        });
-      }
-
-      return new NextResponse(exportData, {
-        headers: {
-          "Content-Type": "text/markdown",
-          "Content-Disposition": `attachment; filename="room-${roomCode}-${
-            new Date().toISOString().split("T")[0]
-          }.md"`,
-        },
-      });
-    }
-
+    const roomCode = params.roomCode.toUpperCase();
     const room = getRoom(roomCode);
 
     if (!room) {
-      return NextResponse.json(
-        { error: "Room not found or expired" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
     }
 
     // Return room data without sensitive information
@@ -122,10 +41,11 @@ export async function GET(
         fileSize: item.fileSize,
         fileType: item.fileType,
       })),
-      folders: room.folders.map((folder) => ({
-        id: folder.id,
-        name: folder.name,
-        createdAt: folder.createdAt.toISOString(),
+      participantCount: room.participants.size,
+      participants: Array.from(room.participants.values()).map((p) => ({
+        userId: p.userId,
+        userName: p.userName,
+        lastActivity: p.lastActivity.toISOString(),
       })),
       chatMessages: room.chatMessages.map((msg) => ({
         id: msg.id,
@@ -134,14 +54,18 @@ export async function GET(
         message: msg.message,
         createdAt: msg.createdAt.toISOString(),
       })),
-      participantCount: room.participants.size,
-      theme: room.theme,
-      lastActivity: room.lastActivity.toISOString(),
+      folders: room.folders.map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        createdAt: folder.createdAt,
+      })),
+      theme: "dark",
+      lastActivity: new Date().toISOString(),
     });
   } catch (error) {
     console.error("Error fetching room:", error);
     return NextResponse.json(
-      { error: "Failed to fetch room" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
@@ -149,60 +73,59 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ roomCode: string }> }
+  { params }: { params: { roomCode: string } }
 ) {
   try {
-    const { roomCode } = await params;
-    const body = await request.json();
+    const roomCode = params.roomCode.toUpperCase();
+    const room = getRoom(roomCode);
 
-    if (!roomCode) {
-      return NextResponse.json(
-        { error: "Room code is required" },
-        { status: 400 }
-      );
+    if (!room) {
+      return NextResponse.json({ error: "Room not found" }, { status: 404 });
     }
 
-    // Handle different actions
-    switch (body.action) {
+    const body = await request.json();
+    const { action } = body;
+
+    switch (action) {
+      case "join_room": {
+        const { userId: joinUserId, userName: joinUserName } = body;
+        const joinSuccess = addParticipant(roomCode, joinUserId, joinUserName);
+
+        if (joinSuccess) {
+          return NextResponse.json({ success: true });
+        } else {
+          return NextResponse.json(
+            { error: "Failed to join room" },
+            { status: 500 }
+          );
+        }
+      }
+
       case "add_item": {
         const {
           type,
           content,
           userId,
+          folderId,
           fileName,
           fileSize,
           fileType,
-          folderId,
         } = body;
-
-        if (!type || !content || !userId) {
-          return NextResponse.json(
-            { error: "Missing required fields" },
-            { status: 400 }
-          );
-        }
-
-        const newItem = addItemToRoom(roomCode, type, content, userId, {
+        const success = addItemToRoom(roomCode, type, content, userId, {
+          folderId,
           fileName,
           fileSize,
           fileType,
-          folderId,
         });
 
-        if (!newItem) {
+        if (success) {
+          return NextResponse.json({ success: true });
+        } else {
           return NextResponse.json(
-            { error: "Room not found or expired" },
-            { status: 404 }
+            { error: "Failed to add item" },
+            { status: 500 }
           );
         }
-
-        return NextResponse.json({
-          success: true,
-          item: {
-            ...newItem,
-            createdAt: newItem.createdAt.toISOString(),
-          },
-        });
       }
 
       case "add_chat": {

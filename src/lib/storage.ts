@@ -31,7 +31,10 @@ export interface Room {
   createdAt: Date;
   expiresAt: Date;
   items: RoomItem[];
-  participants: Set<string>;
+  participants: Map<
+    string,
+    { userId: string; userName: string; lastActivity: Date }
+  >;
   chatMessages: ChatMessage[];
   folders: Folder[];
   theme: "light" | "dark";
@@ -101,7 +104,7 @@ export function createRoom(roomCode: string): Room {
     createdAt: now,
     expiresAt,
     items: [],
-    participants: new Set<string>(),
+    participants: new Map(),
     chatMessages: [],
     folders: [],
     theme: "dark", // Default to dark theme
@@ -170,7 +173,13 @@ export function addItemToRoom(
   };
 
   room.items.push(newItem);
-  room.participants.add(userId);
+
+  // Update participant activity
+  if (room.participants.has(userId)) {
+    const participant = room.participants.get(userId)!;
+    participant.lastActivity = new Date();
+  }
+
   room.lastActivity = new Date();
 
   return newItem;
@@ -365,4 +374,25 @@ export function getFolders(roomCode: string): Folder[] {
   }
 
   return room.folders;
+}
+
+export function addParticipant(
+  roomCode: string,
+  userId: string,
+  userName: string
+): boolean {
+  const room = getRoom(roomCode);
+
+  if (!room) {
+    return false;
+  }
+
+  room.participants.set(userId, {
+    userId,
+    userName,
+    lastActivity: new Date(),
+  });
+  room.lastActivity = new Date();
+
+  return true;
 }

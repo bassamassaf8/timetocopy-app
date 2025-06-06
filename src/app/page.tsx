@@ -197,8 +197,11 @@ export default function Home() {
                   </div>
                 </div>
 
-                <button className="w-full bg-white text-stone-700 font-semibold py-2 sm:py-2.5 lg:py-3 px-3 sm:px-4 lg:px-6 rounded-lg sm:rounded-xl lg:rounded-2xl transition-all duration-200 hover:bg-stone-100 transform hover:scale-105 shadow-lg text-xs sm:text-sm lg:text-base">
-                  Upgrade to Pro
+                <button
+                  className="w-full bg-white text-stone-700 font-semibold py-2 sm:py-2.5 lg:py-3 px-3 sm:px-4 lg:px-6 rounded-lg sm:rounded-xl lg:rounded-2xl transition-all duration-200 hover:bg-stone-100 transform hover:scale-105 shadow-lg text-xs sm:text-sm lg:text-base disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  disabled
+                >
+                  Coming Soon
                 </button>
 
                 <p className="text-center text-stone-200 text-xs sm:text-sm mt-2 sm:mt-3">
