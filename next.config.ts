@@ -2,11 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Production optimizations
-  experimental: {
-    // Disable turbopack in production for better stability
-    turbo: {
-      rules: {},
-    },
+  turbopack: {
+    rules: {},
   },
 
   // Image optimization for external images

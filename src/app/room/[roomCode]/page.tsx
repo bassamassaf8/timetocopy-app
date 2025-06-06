@@ -109,8 +109,6 @@ export default function RoomPage() {
   const [newChatMessage, setNewChatMessage] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-  const [isSignedIn, setIsSignedIn] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
 
   const pollInterval = useRef<NodeJS.Timeout | null>(null);

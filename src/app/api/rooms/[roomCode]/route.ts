@@ -6,18 +6,17 @@ import {
   togglePinItem,
   addReaction,
   setRoomTheme,
-  exportRoomData,
   createFolder,
   addParticipant,
 } from "@/lib/storage";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { roomCode: string } }
+  { params }: { params: Promise<{ roomCode: string }> }
 ) {
   try {
-    const roomCode = params.roomCode.toUpperCase();
-    const room = getRoom(roomCode);
+    const { roomCode } = await params;
+    const room = getRoom(roomCode.toUpperCase());
 
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
@@ -73,11 +72,12 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { roomCode: string } }
+  { params }: { params: Promise<{ roomCode: string }> }
 ) {
   try {
-    const roomCode = params.roomCode.toUpperCase();
-    const room = getRoom(roomCode);
+    const { roomCode } = await params;
+    const roomCodeUpper = roomCode.toUpperCase();
+    const room = getRoom(roomCodeUpper);
 
     if (!room) {
       return NextResponse.json({ error: "Room not found" }, { status: 404 });
@@ -89,7 +89,11 @@ export async function POST(
     switch (action) {
       case "join_room": {
         const { userId: joinUserId, userName: joinUserName } = body;
-        const joinSuccess = addParticipant(roomCode, joinUserId, joinUserName);
+        const joinSuccess = addParticipant(
+          roomCodeUpper,
+          joinUserId,
+          joinUserName
+        );
 
         if (joinSuccess) {
           return NextResponse.json({ success: true });
@@ -111,7 +115,7 @@ export async function POST(
           fileSize,
           fileType,
         } = body;
-        const success = addItemToRoom(roomCode, type, content, userId, {
+        const success = addItemToRoom(roomCodeUpper, type, content, userId, {
           folderId,
           fileName,
           fileSize,
@@ -138,7 +142,12 @@ export async function POST(
           );
         }
 
-        const chatMessage = addChatMessage(roomCode, userId, userName, message);
+        const chatMessage = addChatMessage(
+          roomCodeUpper,
+          userId,
+          userName,
+          message
+        );
 
         if (!chatMessage) {
           return NextResponse.json(
@@ -166,7 +175,7 @@ export async function POST(
           );
         }
 
-        const success = togglePinItem(roomCode, itemId);
+        const success = togglePinItem(roomCodeUpper, itemId);
 
         if (!success) {
           return NextResponse.json(
@@ -188,7 +197,7 @@ export async function POST(
           );
         }
 
-        const success = addReaction(roomCode, itemId, emoji, userId);
+        const success = addReaction(roomCodeUpper, itemId, emoji, userId);
 
         if (!success) {
           return NextResponse.json(
@@ -207,7 +216,7 @@ export async function POST(
           return NextResponse.json({ error: "Invalid theme" }, { status: 400 });
         }
 
-        const success = setRoomTheme(roomCode, theme);
+        const success = setRoomTheme(roomCodeUpper, theme);
 
         if (!success) {
           return NextResponse.json(
@@ -229,7 +238,7 @@ export async function POST(
           );
         }
 
-        const newFolder = createFolder(roomCode, folderName.trim());
+        const newFolder = createFolder(roomCodeUpper, folderName.trim());
 
         if (!newFolder) {
           return NextResponse.json(
@@ -258,7 +267,7 @@ export async function POST(
           );
         }
 
-        const newItem = addItemToRoom(roomCode, type, content, userId);
+        const newItem = addItemToRoom(roomCodeUpper, type, content, userId);
 
         if (!newItem) {
           return NextResponse.json(
